@@ -9,7 +9,7 @@ A native macOS menu bar app that generates pure binaural beats for focus, relaxa
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue) ![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange) ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
 <p align="center">
-  <img src="docs/images/screenshot.png" width="320" alt="BinauralEngine screenshot">
+  <img src="docs/images/screenshot-v2.png" width="320" alt="BinauralEngine screenshot">
 </p>
 
 ## What It Does
