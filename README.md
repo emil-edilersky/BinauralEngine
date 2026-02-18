@@ -1,8 +1,16 @@
+<p align="center">
+  <img src="docs/images/app-icon.png" width="128" height="128" alt="BinauralEngine icon">
+</p>
+
 # BinauralEngine
 
 A native macOS menu bar app that generates pure binaural beats for focus, relaxation, and sleep. No music, no noise — just clean sine waves backed by brainwave entrainment research.
 
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue) ![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange) ![License: MIT](https://img.shields.io/badge/License-MIT-green)
+
+<p align="center">
+  <img src="docs/images/screenshot.png" width="320" alt="BinauralEngine screenshot">
+</p>
 
 ## What It Does
 
