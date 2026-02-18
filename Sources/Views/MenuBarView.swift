@@ -67,26 +67,24 @@ struct MenuBarView: View {
                 }
 
                 // Play/Pause
-                Button {
-                    appState.togglePlayPause()
-                } label: {
-                    Image(systemName: appState.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.blue)
-                        .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.plain)
+                Image(systemName: appState.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.blue)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        appState.togglePlayPause()
+                    }
 
                 // Stop
-                Button {
-                    appState.stopSession()
-                } label: {
-                    Image(systemName: "stop.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 20, height: 20)
-                }
-                .buttonStyle(.plain)
+                Image(systemName: "stop.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        appState.stopSession()
+                    }
             }
         }
     }
@@ -103,37 +101,35 @@ struct MenuBarView: View {
     }
 
     private func presetRow(_ preset: Preset) -> some View {
-        Button {
-            appState.selectedPreset = preset
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: preset == appState.selectedPreset ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(preset == appState.selectedPreset ? .blue : .secondary)
-                    .font(.body)
+        HStack(spacing: 10) {
+            Image(systemName: preset == appState.selectedPreset ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(preset == appState.selectedPreset ? .blue : .secondary)
+                .font(.body)
 
-                Image(systemName: preset.iconName)
-                    .frame(width: 18)
-                    .foregroundStyle(preset == appState.selectedPreset ? .primary : .secondary)
+            Image(systemName: preset.iconName)
+                .frame(width: 18)
+                .foregroundStyle(preset == appState.selectedPreset ? .primary : .secondary)
 
-                Text(preset.displayName)
-                    .font(.body)
+            Text(preset.displayName)
+                .font(.body)
 
-                Spacer()
+            Spacer()
 
-                Text(preset.frequencyLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .contentShape(Rectangle())
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
+            Text(preset.frequencyLabel)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
         .background(
             preset == appState.selectedPreset
                 ? Color.blue.opacity(0.08)
                 : Color.clear
         )
+        .onTapGesture {
+            appState.selectedPreset = preset
+        }
     }
 
     // MARK: - Duration buttons
@@ -149,23 +145,22 @@ struct MenuBarView: View {
     }
 
     private func durationButton(_ duration: SessionDuration) -> some View {
-        Button {
-            appState.startSession(duration: duration)
-        } label: {
-            Text(duration.displayLabel)
-                .font(.system(.caption, design: .rounded, weight: .medium))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.blue.opacity(0.1))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Color.blue.opacity(0.2), lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
+        Text(duration.displayLabel)
+            .font(.system(.caption, design: .rounded, weight: .medium))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.blue.opacity(0.1))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(Color.blue.opacity(0.2), lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                appState.startSession(duration: duration)
+            }
     }
 
     // MARK: - Carrier Tuning (foldable)
@@ -189,31 +184,29 @@ struct MenuBarView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showCarrierTuning.toggle()
-                }
+                showCarrierTuning.toggle()
             }
 
             if showCarrierTuning {
                 VStack(spacing: 4) {
                     Slider(
                         value: $appState.carrierFrequency,
-                        in: 40...500,
+                        in: 20...500,
                         step: 10
                     )
                     .controlSize(.small)
 
                     HStack {
-                        Text("40")
+                        Text("20")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                         Spacer()
-                        Button("Reset") {
-                            appState.carrierFrequency = 100
-                        }
-                        .font(.caption2)
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.blue.opacity(0.7))
+                        Text("Reset")
+                            .font(.caption2)
+                            .foregroundStyle(.blue.opacity(0.7))
+                            .onTapGesture {
+                                appState.carrierFrequency = 100
+                            }
                         Spacer()
                         Text("500")
                             .font(.caption2)
@@ -222,7 +215,6 @@ struct MenuBarView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
-                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
     }
@@ -245,14 +237,12 @@ struct MenuBarView: View {
 
             HStack {
                 Spacer()
-                Button("Hide") {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                Text("Hide")
+                    .font(.caption2)
+                    .foregroundStyle(.blue.opacity(0.7))
+                    .onTapGesture {
                         showAbout = false
                     }
-                }
-                .font(.caption2)
-                .buttonStyle(.plain)
-                .foregroundStyle(.blue.opacity(0.7))
             }
         }
         .padding(.horizontal, 16)
@@ -274,14 +264,12 @@ struct MenuBarView: View {
             Spacer()
 
             if !showAbout {
-                Button("About") {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                Text("About")
+                    .foregroundStyle(.tertiary)
+                    .font(.caption2)
+                    .onTapGesture {
                         showAbout = true
                     }
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.tertiary)
-                .font(.caption2)
             }
         }
         .padding(.horizontal, 16)

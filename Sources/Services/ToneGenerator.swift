@@ -31,6 +31,13 @@ final class ToneGenerator {
     /// Generation counter to invalidate stale stop() closures
     private var generation: Int = 0
 
+    /// Observer for audio device changes
+    private var configChangeObserver: NSObjectProtocol?
+
+    /// Last known frequencies for restart after device change
+    private var lastLeftFreq: Double = 0
+    private var lastRightFreq: Double = 0
+
     /// Start generating binaural tones at the given frequencies.
     ///
     /// - Parameters:
@@ -140,17 +147,41 @@ final class ToneGenerator {
             self.audioEngine = engine
             self.sourceNode = node
             self.isPlaying = true
+            self.lastLeftFreq = leftFreq
+            self.lastRightFreq = rightFreq
 
             // Store pointers for later manipulation
             self._leftFreqPtr = leftFreqPtr
             self._rightFreqPtr = rightFreqPtr
             self._targetGainPtr = targetGainPtr
+
+            // Observe audio device changes (e.g. switching headphones/speakers)
+            configChangeObserver.map { NotificationCenter.default.removeObserver($0) }
+            configChangeObserver = NotificationCenter.default.addObserver(
+                forName: .AVAudioEngineConfigurationChange,
+                object: engine,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.handleDeviceChange()
+                }
+            }
         } catch {
             print("ToneGenerator: Failed to start audio engine: \(error)")
             leftFreqPtr.deallocate()
             rightFreqPtr.deallocate()
             targetGainPtr.deallocate()
         }
+    }
+
+    /// Restart the engine when the audio output device changes.
+    private func handleDeviceChange() {
+        guard isPlaying || (_targetGainPtr != nil) else { return }
+        let leftFreq = _leftFreqPtr?.pointee ?? lastLeftFreq
+        let rightFreq = _rightFreqPtr?.pointee ?? lastRightFreq
+        // Tear down old engine and rebuild with new device's sample rate
+        forceStop()
+        start(leftFrequency: leftFreq, rightFrequency: rightFreq)
     }
 
     /// Pointers for communicating with the audio render thread
@@ -211,6 +242,10 @@ final class ToneGenerator {
 
     /// Shared teardown — stops engine, detaches node, deallocates pointers.
     private func tearDownEngine() {
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configChangeObserver = nil
+        }
         if let engine = audioEngine {
             engine.stop()
             if let node = sourceNode, engine.attachedNodes.contains(node) {
