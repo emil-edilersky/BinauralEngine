@@ -28,12 +28,16 @@ final class ToneGenerator {
 
     private(set) var isPlaying: Bool = false
 
+    /// Generation counter to invalidate stale stop() closures
+    private var generation: Int = 0
+
     /// Start generating binaural tones at the given frequencies.
     ///
     /// - Parameters:
     ///   - leftFreq: Frequency for the left ear (carrier)
     ///   - rightFreq: Frequency for the right ear (carrier + beat)
     func start(leftFrequency leftFreq: Double, rightFrequency rightFreq: Double) {
+        generation += 1  // Invalidate any pending stop() closures
         stop()
 
         _leftFrequency = leftFreq
@@ -157,7 +161,7 @@ final class ToneGenerator {
     /// Stop tone generation with a fade-out.
     /// Completion is called after the fade finishes.
     func stop(completion: (() -> Void)? = nil) {
-        guard isPlaying, let engine = audioEngine else {
+        guard isPlaying, audioEngine != nil else {
             completion?()
             return
         }
@@ -165,25 +169,18 @@ final class ToneGenerator {
         // Trigger fade-out
         _targetGainPtr?.pointee = 0.0
 
+        // Capture current generation — if it changes before the closure fires,
+        // another start() or forceStop() already took over teardown.
+        let expectedGeneration = generation
+
         // Wait for fade to complete, then tear down
         let fadeMs = Int(fadeDuration * 1000) + 100
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(fadeMs)) { [weak self] in
-            engine.stop()
-            if let node = self?.sourceNode {
-                engine.detach(node)
+            guard let self, self.generation == expectedGeneration else {
+                completion?()
+                return
             }
-            self?.audioEngine = nil
-            self?.sourceNode = nil
-            self?.isPlaying = false
-
-            // Clean up pointers
-            self?._leftFreqPtr?.deallocate()
-            self?._rightFreqPtr?.deallocate()
-            self?._targetGainPtr?.deallocate()
-            self?._leftFreqPtr = nil
-            self?._rightFreqPtr = nil
-            self?._targetGainPtr = nil
-
+            self.tearDownEngine()
             completion?()
         }
     }
@@ -205,12 +202,20 @@ final class ToneGenerator {
         _rightFreqPtr?.pointee = right
     }
 
-    /// Immediately stop without fade (for app termination)
+    /// Immediately stop without fade (for app termination or quick restart)
     func forceStop() {
+        generation += 1  // Invalidate any pending stop() closures
         _targetGainPtr?.pointee = 0.0
-        audioEngine?.stop()
-        if let node = sourceNode {
-            audioEngine?.detach(node)
+        tearDownEngine()
+    }
+
+    /// Shared teardown — stops engine, detaches node, deallocates pointers.
+    private func tearDownEngine() {
+        if let engine = audioEngine {
+            engine.stop()
+            if let node = sourceNode, engine.attachedNodes.contains(node) {
+                engine.detach(node)
+            }
         }
         audioEngine = nil
         sourceNode = nil
