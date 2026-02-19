@@ -152,6 +152,7 @@ enum IsochronalFrequency: Double, CaseIterable, Identifiable {
 enum ADHDPowerVariation: String, CaseIterable, Identifiable {
     case standard
     case slow
+    case still
 
     var id: String { rawValue }
 
@@ -159,6 +160,7 @@ enum ADHDPowerVariation: String, CaseIterable, Identifiable {
         switch self {
         case .standard: return "Steady Pace"
         case .slow:     return "Slow"
+        case .still:    return "Still"
         }
     }
 
@@ -166,6 +168,7 @@ enum ADHDPowerVariation: String, CaseIterable, Identifiable {
         switch self {
         case .standard: return "bolt.fill"
         case .slow:     return "tortoise.fill"
+        case .still:    return "moon.fill"
         }
     }
 
@@ -174,6 +177,7 @@ enum ADHDPowerVariation: String, CaseIterable, Identifiable {
         switch self {
         case .standard: return 1.0
         case .slow:     return 1.2   // 20% slower
+        case .still:    return 1.56  // 30% slower than slow (1.2 × 1.3)
         }
     }
 }
