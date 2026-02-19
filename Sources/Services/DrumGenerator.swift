@@ -175,7 +175,6 @@ final class DrumGenerator {
 
         mutating func next() -> Float {
             state = state &* 1664525 &+ 1013904223
-            // Convert to float in -1..1
             return Float(Int32(bitPattern: state)) / Float(Int32.max)
         }
     }
@@ -185,13 +184,11 @@ final class DrumGenerator {
         var y1: Float = 0.0
         var a: Float = 0.5
 
-        /// Create a lowpass with cutoff in Hz.
         static func lowpass(cutoff: Double, sampleRate: Double) -> OnePole {
             let omega = 2.0 * Double.pi * cutoff / sampleRate
             return OnePole(y1: 0, a: Float(omega / (1.0 + omega)))
         }
 
-        /// Create a highpass with cutoff in Hz.
         static func highpass(cutoff: Double, sampleRate: Double) -> OnePole {
             let omega = 2.0 * Double.pi * cutoff / sampleRate
             return OnePole(y1: 0, a: Float(1.0 / (1.0 + omega)))
@@ -208,22 +205,25 @@ final class DrumGenerator {
         }
     }
 
-    /// Biquad bandpass filter.
+    /// Biquad bandpass filter with unity peak gain at center frequency.
     private struct BiquadBPF {
         var b0: Float, b1: Float, b2: Float
         var a1: Float, a2: Float
         var x1: Float = 0, x2: Float = 0
         var y1: Float = 0, y2: Float = 0
 
+        /// Standard BPF scaled so peak gain at center ≈ Q (resonant boost).
         static func bandpass(freq: Double, q: Double, sampleRate: Double) -> BiquadBPF {
             let omega = 2.0 * Double.pi * freq / sampleRate
             let sinW = sin(omega)
             let alpha = sinW / (2.0 * q)
             let a0 = 1.0 + alpha
+            // Scale by Q so narrow bands still pass useful signal
+            let scale = q * 0.5
             return BiquadBPF(
-                b0: Float(alpha / a0),
+                b0: Float(alpha / a0 * scale),
                 b1: 0,
-                b2: Float(-alpha / a0),
+                b2: Float(-alpha / a0 * scale),
                 a1: Float(-2.0 * cos(omega) / a0),
                 a2: Float((1.0 - alpha) / a0)
             )
@@ -235,45 +235,50 @@ final class DrumGenerator {
             y2 = y1; y1 = y
             return y
         }
+
+        mutating func reset() {
+            x1 = 0; x2 = 0; y1 = 0; y2 = 0
+        }
     }
 
     // MARK: - Voice Structs
 
-    /// Kick: sine with pitch envelope (200→55 Hz glide), amp decay ~220ms.
+    /// Shared helper for decay coefficient computation.
+    private nonisolated static func decayCoeff(ms: Double, sampleRate: Double) -> Float {
+        Float(exp(-1.0 / (ms * 0.001 * sampleRate)))
+    }
+
+    /// Kick: sine with pitch envelope (160→50 Hz glide), punchy 80ms decay.
     private struct KickVoice {
         var active: Bool = false
         var phase: Double = 0.0
         var ampEnv: ExpEnv = ExpEnv()
         var pitchEnv: ExpEnv = ExpEnv()
         var velocity: Float = 0.0
-        let startFreq: Double = 200.0
-        let endFreq: Double = 55.0
-
-        static func decayCoeff(ms: Double, sampleRate: Double) -> Float {
-            Float(exp(-1.0 / (ms * 0.001 * sampleRate)))
-        }
 
         mutating func trigger(velocity: Float, sampleRate: Double) {
             active = true
             phase = 0.0
             self.velocity = velocity
-            ampEnv = ExpEnv(value: velocity, decay: Self.decayCoeff(ms: 220, sampleRate: sampleRate))
-            pitchEnv = ExpEnv(value: 1.0, decay: Self.decayCoeff(ms: 40, sampleRate: sampleRate))
+            // Short 80ms decay = punchy kick that clears before next beat
+            ampEnv = ExpEnv(value: velocity, decay: decayCoeff(ms: 80, sampleRate: sampleRate))
+            // Fast 20ms pitch glide: 160→50 Hz
+            pitchEnv = ExpEnv(value: 1.0, decay: decayCoeff(ms: 20, sampleRate: sampleRate))
         }
 
         mutating func render(sampleRate: Double) -> Float {
             guard active else { return 0 }
             let pitchMix = pitchEnv.process()
-            let freq = endFreq + (startFreq - endFreq) * Double(pitchMix)
+            let freq = 50.0 + 110.0 * Double(pitchMix) // 160→50 Hz
             let sample = Float(sin(2.0 * .pi * phase)) * ampEnv.process()
             phase += freq / sampleRate
             if phase >= 1.0 { phase -= 1.0 }
-            if ampEnv.value < 0.001 { active = false }
+            if ampEnv.value < 0.005 { active = false }
             return sample
         }
     }
 
-    /// Snare: noise burst + 2 bandpass resonators (body 350 Hz, crack 900 Hz) + HP snap.
+    /// Snare: noise burst + 2 wide bandpass resonators + HP snap. 60ms decay.
     private struct SnareVoice {
         var active: Bool = false
         var noiseEnv: ExpEnv = ExpEnv()
@@ -285,19 +290,21 @@ final class DrumGenerator {
         var velocity: Float = 0.0
 
         init(sampleRate: Double, seed: UInt32) {
-            bodyBPF = BiquadBPF.bandpass(freq: 350, q: 3.0, sampleRate: sampleRate)
-            crackBPF = BiquadBPF.bandpass(freq: 900, q: 2.5, sampleRate: sampleRate)
-            hpf = OnePole.highpass(cutoff: 200, sampleRate: sampleRate)
+            // Lower Q for wider, louder bands
+            bodyBPF = BiquadBPF.bandpass(freq: 250, q: 1.5, sampleRate: sampleRate)
+            crackBPF = BiquadBPF.bandpass(freq: 1200, q: 2.0, sampleRate: sampleRate)
+            hpf = OnePole.highpass(cutoff: 150, sampleRate: sampleRate)
             noise = LCGNoise(seed: seed)
         }
 
         mutating func trigger(velocity: Float, sampleRate: Double) {
             active = true
             self.velocity = velocity
-            let nDecay = KickVoice.decayCoeff(ms: 120, sampleRate: sampleRate)
-            let tDecay = KickVoice.decayCoeff(ms: 80, sampleRate: sampleRate)
-            noiseEnv = ExpEnv(value: velocity, decay: nDecay)
-            toneEnv = ExpEnv(value: velocity * 0.7, decay: tDecay)
+            noiseEnv = ExpEnv(value: velocity, decay: decayCoeff(ms: 60, sampleRate: sampleRate))
+            toneEnv = ExpEnv(value: velocity, decay: decayCoeff(ms: 35, sampleRate: sampleRate))
+            // Reset filters for clean transient
+            bodyBPF.reset()
+            crackBPF.reset()
         }
 
         mutating func render() -> Float {
@@ -306,17 +313,17 @@ final class DrumGenerator {
             let noiseAmp = noiseEnv.process()
             let toneAmp = toneEnv.process()
 
-            let body = bodyBPF.process(n) * toneAmp
-            let crack = crackBPF.process(n) * toneAmp * 0.6
-            let snap = hpf.processHP(n * noiseAmp) * 0.4
+            let body = bodyBPF.process(n) * toneAmp * 3.0
+            let crack = crackBPF.process(n) * toneAmp * 2.0
+            let snap = hpf.processHP(n * noiseAmp) * 0.6
 
             let out = body + crack + snap
-            if noiseAmp < 0.001 && toneAmp < 0.001 { active = false }
+            if noiseAmp < 0.005 && toneAmp < 0.005 { active = false }
             return out
         }
     }
 
-    /// Hi-hat: noise + 5 metallic resonators (5.4–11.2 kHz), closed ~60ms / open ~180ms.
+    /// Hi-hat: noise + 3 metallic resonators, HP filtered. Closed 30ms / open 120ms.
     private struct HatVoice {
         var active: Bool = false
         var ampEnv: ExpEnv = ExpEnv()
@@ -325,19 +332,22 @@ final class DrumGenerator {
         var noise: LCGNoise
         var velocity: Float = 0.0
 
-        static let metallicFreqs: [Double] = [5400, 6800, 8200, 9600, 11200]
+        // Fewer resonators at lower Q for louder, broader metallic tone
+        static let metallicFreqs: [Double] = [6200, 8500, 11000]
 
         init(sampleRate: Double, seed: UInt32) {
-            resonators = Self.metallicFreqs.map { BiquadBPF.bandpass(freq: $0, q: 8.0, sampleRate: sampleRate) }
-            hpf = OnePole.highpass(cutoff: 4000, sampleRate: sampleRate)
+            resonators = Self.metallicFreqs.map { BiquadBPF.bandpass(freq: $0, q: 3.0, sampleRate: sampleRate) }
+            hpf = OnePole.highpass(cutoff: 3000, sampleRate: sampleRate)
             noise = LCGNoise(seed: seed)
         }
 
         mutating func trigger(velocity: Float, isOpen: Bool, sampleRate: Double) {
             active = true
             self.velocity = velocity
-            let ms: Double = isOpen ? 180 : 60
-            ampEnv = ExpEnv(value: velocity, decay: KickVoice.decayCoeff(ms: ms, sampleRate: sampleRate))
+            let ms: Double = isOpen ? 120 : 30
+            ampEnv = ExpEnv(value: velocity, decay: decayCoeff(ms: ms, sampleRate: sampleRate))
+            // Reset resonators for clean attack
+            for i in 0..<resonators.count { resonators[i].reset() }
         }
 
         mutating func render() -> Float {
@@ -349,10 +359,52 @@ final class DrumGenerator {
             for i in 0..<resonators.count {
                 sum += resonators[i].process(n)
             }
-            let filtered = hpf.processHP(sum * 0.2)
+            // HPF keeps it bright, no additional attenuation
+            let filtered = hpf.processHP(sum)
             let out = filtered * env
 
-            if env < 0.001 { active = false }
+            if env < 0.005 { active = false }
+            return out
+        }
+    }
+
+    /// Crash cymbal: noise + wide metallic resonators, long ~500ms decay.
+    private struct CrashVoice {
+        var active: Bool = false
+        var ampEnv: ExpEnv = ExpEnv()
+        var resonators: [BiquadBPF]
+        var hpf: OnePole
+        var noise: LCGNoise
+        var velocity: Float = 0.0
+
+        static let metallicFreqs: [Double] = [3000, 4800, 6500, 9000]
+
+        init(sampleRate: Double, seed: UInt32) {
+            resonators = Self.metallicFreqs.map { BiquadBPF.bandpass(freq: $0, q: 2.0, sampleRate: sampleRate) }
+            hpf = OnePole.highpass(cutoff: 2000, sampleRate: sampleRate)
+            noise = LCGNoise(seed: seed)
+        }
+
+        mutating func trigger(velocity: Float, sampleRate: Double) {
+            active = true
+            self.velocity = velocity
+            ampEnv = ExpEnv(value: velocity, decay: decayCoeff(ms: 500, sampleRate: sampleRate))
+            for i in 0..<resonators.count { resonators[i].reset() }
+        }
+
+        mutating func render() -> Float {
+            guard active else { return 0 }
+            let n = noise.next()
+            let env = ampEnv.process()
+
+            var sum: Float = 0
+            for i in 0..<resonators.count {
+                sum += resonators[i].process(n)
+            }
+            let filtered = hpf.processHP(sum + n * 0.15)
+            let out = filtered * env
+
+            if env < 0.003 { active = false }
             return out
         }
     }
@@ -370,9 +422,8 @@ final class DrumGenerator {
         let bpm = pattern.bpm
         let loopBeats = pattern.loopBeats
 
-        // Convert trigger beats to sample offsets within the loop
         let secondsPerBeat = 60.0 / bpm
-        let loopLengthSamples = UInt64(Double(loopBeats) * secondsPerBeat * sampleRate)
+        let loopLengthSamples = UInt64(loopBeats * secondsPerBeat * sampleRate)
 
         struct TriggerInfo {
             let sampleOffset: UInt64
@@ -393,19 +444,18 @@ final class DrumGenerator {
             )
         }.sorted { $0.sampleOffset < $1.sampleOffset }
 
-        // Voice pools
-        let kickCount = 4
-        let snareCount = 6
-        let hatCount = 8
+        // Smaller voice pools — short decays mean voices free up fast
+        let kickCount = 2
+        let snareCount = 3
+        let hatCount = 4
+        let crashCount = 2
         var kicks = [KickVoice](repeating: KickVoice(), count: kickCount)
         var snares = (0..<snareCount).map { i in SnareVoice(sampleRate: sampleRate, seed: UInt32(100 + i * 37)) }
         var hats = (0..<hatCount).map { i in HatVoice(sampleRate: sampleRate, seed: UInt32(200 + i * 53)) }
+        var crashes = (0..<crashCount).map { i in CrashVoice(sampleRate: sampleRate, seed: UInt32(300 + i * 61)) }
 
         var currentSample: UInt64 = 0
         var currentGain: Float = 0.0
-
-        // Track which triggers fired this loop iteration to handle wrap-around
-        var lastLoopStart: UInt64 = 0
 
         return { _, _, frameCount, audioBufferList -> OSStatus in
             let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
@@ -417,7 +467,6 @@ final class DrumGenerator {
             let target = targetGainPtr.pointee
 
             for frame in 0..<Int(frameCount) {
-                // Gain smoothing
                 if currentGain < target {
                     currentGain = min(currentGain + gainSmoothing, target)
                 } else if currentGain > target {
@@ -425,19 +474,12 @@ final class DrumGenerator {
                 }
 
                 let posInLoop = currentSample % loopLengthSamples
-                let loopStart = currentSample - posInLoop
 
-                // Detect loop restart
-                if loopStart != lastLoopStart {
-                    lastLoopStart = loopStart
-                }
-
-                // Check triggers — fire voices at their sample offsets
+                // Fire triggers at their sample offsets
                 for info in triggerInfos {
                     if info.sampleOffset == posInLoop {
                         switch info.instrument {
                         case .kick:
-                            // Find inactive kick voice (or steal oldest)
                             var idx = 0
                             for k in 0..<kickCount {
                                 if !kicks[k].active { idx = k; break }
@@ -460,47 +502,58 @@ final class DrumGenerator {
                                 idx = h
                             }
                             hats[idx].trigger(velocity: info.velocity, isOpen: info.isOpen, sampleRate: sampleRate)
+
+                        case .crash:
+                            var idx = 0
+                            for c in 0..<crashCount {
+                                if !crashes[c].active { idx = c; break }
+                                idx = c
+                            }
+                            crashes[idx].trigger(velocity: info.velocity, sampleRate: sampleRate)
                         }
                     }
                 }
 
-                // Render all active voices
+                // Render all active voices into stereo mix
                 var sumL: Float = 0
                 var sumR: Float = 0
 
+                // Kick: center, moderate level
                 for k in 0..<kickCount {
                     let sample = kicks[k].render(sampleRate: sampleRate)
-                    if sample != 0 {
-                        // Center: equal L/R
-                        sumL += sample
-                        sumR += sample
-                    }
+                    sumL += sample * 0.7
+                    sumR += sample * 0.7
                 }
 
+                // Snare: slight left bias
                 for s in 0..<snareCount {
                     let sample = snares[s].render()
-                    if sample != 0 {
-                        // Snare triggers carry their own channel, but rendered voices
-                        // don't track channel — use slight left bias for snare overall
-                        sumL += sample * 0.8
-                        sumR += sample * 0.4
-                    }
+                    sumL += sample * 0.65
+                    sumR += sample * 0.35
                 }
 
+                // Hat: alternating L/R
                 for h in 0..<hatCount {
                     let sample = hats[h].render()
-                    if sample != 0 {
-                        // Hats alternate L/R — since voices don't track channel,
-                        // spread evenly with slight alternation
-                        let spread: Float = (h % 2 == 0) ? 0.7 : 0.4
-                        sumL += sample * spread
-                        sumR += sample * (1.0 - spread + 0.1)
+                    if h % 2 == 0 {
+                        sumL += sample * 0.6
+                        sumR += sample * 0.3
+                    } else {
+                        sumL += sample * 0.3
+                        sumR += sample * 0.6
                     }
                 }
 
-                // Soft-clip via tanh + gain
-                let outL = tanhf(sumL * 0.7) * currentGain * 0.75
-                let outR = tanhf(sumR * 0.7) * currentGain * 0.75
+                // Crash: wide stereo
+                for c in 0..<crashCount {
+                    let sample = crashes[c].render()
+                    sumL += sample * 0.3
+                    sumR += sample * 0.7
+                }
+
+                // Soft-clip + master gain
+                let outL = tanhf(sumL) * currentGain * 0.65
+                let outR = tanhf(sumR) * currentGain * 0.65
 
                 leftBuf[frame] = outL
                 rightBuf[frame] = outR

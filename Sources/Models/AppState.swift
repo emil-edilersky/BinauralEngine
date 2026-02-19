@@ -231,6 +231,7 @@ final class AppState: ObservableObject {
 
         toneGenerator.forceStop()
         experimentalGenerator.forceStop()
+        drumGenerator.forceStop()
         sessionTimer.stop()
 
         playingTab = .experimental
