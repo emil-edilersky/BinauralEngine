@@ -123,6 +123,24 @@ enum Preset: String, CaseIterable, Identifiable {
         case .sleep: return "Deep sleep"
         }
     }
+
+    /// Brief explanation of what this preset does and how it works.
+    var aboutDescription: String {
+        switch self {
+        case .focus:
+            return "Designed to sharpen concentration and help you stay locked in. Use with headphones for the full effect."
+        case .energize:
+            return "Promotes alertness and mental energy. Great for mornings or when you need a pick-me-up without caffeine."
+        case .flow:
+            return "Helps you settle into a state of relaxed productivity. Ideal for creative work, writing, or studying."
+        case .calm:
+            return "Guides your mind into a relaxed-but-aware state. Good for winding down or light meditation."
+        case .dream:
+            return "Encourages deep meditation and creative thinking. Let your mind wander freely."
+        case .sleep:
+            return "Helps ease you into deep, restful sleep. Set a duration and drift off."
+        }
+    }
 }
 
 /// Available session durations

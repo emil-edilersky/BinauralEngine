@@ -11,11 +11,31 @@ struct MenuBarView: View {
         VStack(spacing: 0) {
             headerSection
             Divider()
-            presetsSection
+            tabSwitcher
             Divider()
-            controlsSection
-            Divider()
-            carrierDisclosure
+            // Both tabs always rendered (ZStack) to prevent popover resize/dismiss.
+            // Only the active tab is visible and interactive.
+            ZStack {
+                VStack(spacing: 0) {
+                    presetsSection
+                    Divider()
+                    controlsSection
+                    Divider()
+                    carrierDisclosure
+                }
+                .opacity(appState.activeTab == .binaural ? 1 : 0)
+                .allowsHitTesting(appState.activeTab == .binaural)
+
+                VStack(spacing: 0) {
+                    experimentalSection
+                    Divider()
+                    controlsSection
+                    Divider()
+                    modeSettingsSection
+                }
+                .opacity(appState.activeTab == .experimental ? 1 : 0)
+                .allowsHitTesting(appState.activeTab == .experimental)
+            }
             if showAbout {
                 Divider()
                 aboutSection
@@ -89,6 +109,203 @@ struct MenuBarView: View {
         }
     }
 
+    // MARK: - Tab Switcher
+
+    private var tabSwitcher: some View {
+        HStack(spacing: 0) {
+            ForEach(AppTab.allCases) { tab in
+                Text(tab.displayName)
+                    .font(.system(.caption, weight: .medium))
+                    .foregroundStyle(appState.activeTab == tab ? .primary : .secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(
+                        VStack(spacing: 0) {
+                            Spacer()
+                            if appState.activeTab == tab {
+                                Rectangle()
+                                    .fill(Color.blue)
+                                    .frame(height: 2)
+                            }
+                        }
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        appState.activeTab = tab
+                    }
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    // MARK: - Experimental Modes
+
+    private var experimentalSection: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(ExperimentalMode.allCases) { mode in
+                experimentalModeRow(mode)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func experimentalModeRow(_ mode: ExperimentalMode) -> some View {
+        // Only highlight as active when experimental is actually playing (or idle)
+        let isActive = mode == appState.selectedExperimentalMode
+            && (appState.playingTab == nil || appState.playingTab == .experimental)
+
+        return HStack(spacing: 10) {
+            Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(isActive ? .blue : .secondary)
+                .font(.body)
+
+            Image(systemName: mode.iconName)
+                .frame(width: 18)
+                .foregroundStyle(isActive ? .primary : .secondary)
+
+            Text(mode.displayName)
+                .font(.body)
+
+            Spacer()
+
+            Text(mode.description)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .contentShape(Rectangle())
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(isActive ? Color.blue.opacity(0.08) : Color.clear)
+        .onTapGesture {
+            appState.selectedExperimentalMode = mode
+        }
+    }
+
+    // MARK: - Mode Settings (always present — prevents popover resize/dismiss)
+
+    /// All mode settings rendered in a ZStack so the section never changes height.
+    /// Only the active mode's content is visible and interactive.
+    private var modeSettingsSection: some View {
+        ZStack {
+            // Isochronal frequency chips
+            HStack(spacing: 4) {
+                ForEach(IsochronalFrequency.allCases) { freq in
+                    isochronalChip(freq)
+                }
+            }
+            .opacity(appState.selectedExperimentalMode == .isochronal ? 1 : 0)
+            .allowsHitTesting(appState.selectedExperimentalMode == .isochronal)
+
+            // Crystal bowl pattern chips
+            HStack(spacing: 4) {
+                ForEach(CrystalBowlPattern.allCases) { pattern in
+                    bowlPatternChip(pattern)
+                }
+            }
+            .opacity(appState.selectedExperimentalMode == .crystalBowl ? 1 : 0)
+            .allowsHitTesting(appState.selectedExperimentalMode == .crystalBowl)
+
+            // ADHD variation chips
+            HStack(spacing: 4) {
+                ForEach(ADHDPowerVariation.allCases) { variation in
+                    adhdVariationChip(variation)
+                }
+            }
+            .opacity(appState.selectedExperimentalMode == .adhdPower ? 1 : 0)
+            .allowsHitTesting(appState.selectedExperimentalMode == .adhdPower)
+
+            // Description placeholder for modes without sub-settings
+            Text(appState.selectedExperimentalMode.description)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity)
+                .opacity(
+                    [.pinkNoise, .brownNoise, .heartCoherence, .brainMassage]
+                        .contains(appState.selectedExperimentalMode) ? 1 : 0
+                )
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+    }
+
+    private func isochronalChip(_ freq: IsochronalFrequency) -> some View {
+        let isSelected = appState.isochronalFrequency == freq.rawValue
+
+        return VStack(spacing: 2) {
+            Text(freq.displayLabel)
+                .font(.system(.caption, design: .rounded, weight: .semibold))
+            Text(freq.bandLabel)
+                .font(.system(size: 8))
+                .foregroundStyle(.secondary)
+                .opacity(isSelected ? 0.9 : 0.6)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isSelected ? Color.blue.opacity(0.15) : Color.blue.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(isSelected ? Color.blue.opacity(0.4) : Color.blue.opacity(0.15), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            appState.isochronalFrequency = freq.rawValue
+        }
+    }
+
+    private func bowlPatternChip(_ pattern: CrystalBowlPattern) -> some View {
+        let isSelected = appState.crystalBowlPattern == pattern
+
+        return VStack(spacing: 2) {
+            Image(systemName: pattern.iconName)
+                .font(.system(size: 10))
+            Text(pattern.displayName)
+                .font(.system(size: 8, weight: .medium))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isSelected ? Color.blue.opacity(0.15) : Color.blue.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(isSelected ? Color.blue.opacity(0.4) : Color.blue.opacity(0.15), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            appState.crystalBowlPattern = pattern
+        }
+    }
+
+    private func adhdVariationChip(_ variation: ADHDPowerVariation) -> some View {
+        let isSelected = appState.adhdPowerVariation == variation
+
+        return VStack(spacing: 2) {
+            Image(systemName: variation.iconName)
+                .font(.system(size: 10))
+            Text(variation.displayName)
+                .font(.system(size: 8, weight: .medium))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isSelected ? Color.blue.opacity(0.15) : Color.blue.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(isSelected ? Color.blue.opacity(0.4) : Color.blue.opacity(0.15), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            appState.adhdPowerVariation = variation
+        }
+    }
+
     // MARK: - Presets
 
     private var presetsSection: some View {
@@ -101,14 +318,18 @@ struct MenuBarView: View {
     }
 
     private func presetRow(_ preset: Preset) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: preset == appState.selectedPreset ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(preset == appState.selectedPreset ? .blue : .secondary)
+        // Only highlight as active when binaural is actually playing (or idle)
+        let isActive = preset == appState.selectedPreset
+            && (appState.playingTab == nil || appState.playingTab == .binaural)
+
+        return HStack(spacing: 10) {
+            Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(isActive ? .blue : .secondary)
                 .font(.body)
 
             Image(systemName: preset.iconName)
                 .frame(width: 18)
-                .foregroundStyle(preset == appState.selectedPreset ? .primary : .secondary)
+                .foregroundStyle(isActive ? .primary : .secondary)
 
             Text(preset.displayName)
                 .font(.body)
@@ -122,11 +343,7 @@ struct MenuBarView: View {
         .contentShape(Rectangle())
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
-        .background(
-            preset == appState.selectedPreset
-                ? Color.blue.opacity(0.08)
-                : Color.clear
-        )
+        .background(isActive ? Color.blue.opacity(0.08) : Color.clear)
         .onTapGesture {
             appState.selectedPreset = preset
         }
@@ -222,18 +439,30 @@ struct MenuBarView: View {
     // MARK: - About
 
     private var aboutSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Generates pure binaural beat tones to help guide your brain into focus, relaxation, or sleep states.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("Based on brainwave entrainment research. Use with headphones for the binaural effect.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("\u{00A9} 2025 BinauralEngine. Open source.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+        VStack(alignment: .leading, spacing: 8) {
+            // Dynamic: current preset/mode description
+            VStack(alignment: .leading, spacing: 2) {
+                Text(currentModeName)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                Text(currentModeAbout)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+
+            // Static: generic app about
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Pure tone generator for brainwave entrainment. No music, no ads. Use headphones for binaural modes.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("\u{00A9} 2025 BinauralEngine. Open source.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
 
             HStack {
                 Spacer()
@@ -247,6 +476,22 @@ struct MenuBarView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+    }
+
+    private var currentModeName: String {
+        if appState.activeTab == .binaural {
+            return appState.selectedPreset.displayName
+        } else {
+            return appState.selectedExperimentalMode.displayName
+        }
+    }
+
+    private var currentModeAbout: String {
+        if appState.activeTab == .binaural {
+            return appState.selectedPreset.aboutDescription
+        } else {
+            return appState.selectedExperimentalMode.aboutDescription
+        }
     }
 
     // MARK: - Footer
