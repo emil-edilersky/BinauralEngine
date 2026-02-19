@@ -25,6 +25,7 @@ final class AppState: ObservableObject {
     @Published var isochronalFrequency: Double = 10.0 // Default alpha
     @Published var crystalBowlPattern: CrystalBowlPattern = .relax
     @Published var adhdPowerVariation: ADHDPowerVariation = .standard
+    @Published var selectedEnergizerPattern: EnergizerPattern?
 
     /// Which tab started the current session (nil when idle).
     /// Used for pause/resume routing and UI highlighting — independent of which tab is *visible*.
@@ -35,6 +36,7 @@ final class AppState: ObservableObject {
     let sessionTimer = SessionTimer()
     private let toneGenerator = ToneGenerator()
     private let experimentalGenerator = ExperimentalToneGenerator()
+    private let drumGenerator = DrumGenerator()
     private let nowPlayingService = NowPlayingService()
 
     private var timerCancellable: AnyCancellable?
@@ -45,6 +47,7 @@ final class AppState: ObservableObject {
     private var experimentalModeCancellable: AnyCancellable?
     private var bowlPatternCancellable: AnyCancellable?
     private var adhdVariationCancellable: AnyCancellable?
+    private var energizerPatternCancellable: AnyCancellable?
 
     /// Computed left/right frequencies based on carrier + preset beat
     var leftFrequency: Double { carrierFrequency }
@@ -163,6 +166,18 @@ final class AppState: ObservableObject {
                       self.selectedExperimentalMode == .adhdPower else { return }
                 self.startExperimentalSession(duration: nil, mode: .adhdPower, adhdVariation: newVariation)
             }
+
+        // When energizer pattern changes, auto-start or stop
+        energizerPatternCancellable = $selectedEnergizerPattern
+            .dropFirst()
+            .sink { [weak self] newPattern in
+                guard let self, self.activeTab == .energizer else { return }
+                if let pattern = newPattern {
+                    self.startEnergizerSession(pattern: pattern)
+                } else if self.playingTab == .energizer {
+                    self.stopSession()
+                }
+            }
     }
 
     // MARK: - Session Control
@@ -174,6 +189,7 @@ final class AppState: ObservableObject {
         if isPlaying || isPaused {
             toneGenerator.forceStop()
             experimentalGenerator.forceStop()
+            drumGenerator.forceStop()
             sessionTimer.stop()
         }
 
@@ -184,11 +200,14 @@ final class AppState: ObservableObject {
                 leftFrequency: leftFrequency,
                 rightFrequency: rightFrequency
             )
-        } else {
+        } else if activeTab == .energizer, let pattern = selectedEnergizerPattern {
+            drumGenerator.start(pattern: pattern)
+        } else if activeTab == .experimental {
             experimentalGenerator.start(mode: selectedExperimentalMode, bowlPattern: crystalBowlPattern, adhdVariation: adhdPowerVariation)
         }
 
-        sessionTimer.start(duration: duration.totalSeconds)
+        let seconds = (activeTab == .energizer) ? 300 : duration.totalSeconds
+        sessionTimer.start(duration: seconds)
 
         isPlaying = true
         isPaused = false
@@ -236,6 +255,21 @@ final class AppState: ObservableObject {
         updateNowPlayingInfo()
     }
 
+    /// Start a 5-minute energizer session with the given drum pattern.
+    func startEnergizerSession(pattern: EnergizerPattern) {
+        toneGenerator.forceStop()
+        experimentalGenerator.forceStop()
+        drumGenerator.forceStop()
+        sessionTimer.stop()
+
+        playingTab = .energizer
+        drumGenerator.start(pattern: pattern)
+        sessionTimer.start(duration: 300) // always 5 min
+        isPlaying = true
+        isPaused = false
+        updateNowPlayingInfo()
+    }
+
     /// Toggle between playing and paused states.
     /// Routes to the correct generator based on which tab started the session,
     /// not which tab is currently visible.
@@ -244,20 +278,22 @@ final class AppState: ObservableObject {
 
         if isPaused {
             // Resume
-            if playingTab == .binaural {
-                toneGenerator.resume()
-            } else {
-                experimentalGenerator.resume()
+            switch playingTab {
+            case .binaural:     toneGenerator.resume()
+            case .experimental: experimentalGenerator.resume()
+            case .energizer:    drumGenerator.resume()
+            case nil:           break
             }
             sessionTimer.resume()
             isPaused = false
             isPlaying = true
         } else {
             // Pause
-            if playingTab == .binaural {
-                toneGenerator.pause()
-            } else {
-                experimentalGenerator.pause()
+            switch playingTab {
+            case .binaural:     toneGenerator.pause()
+            case .experimental: experimentalGenerator.pause()
+            case .energizer:    drumGenerator.pause()
+            case nil:           break
             }
             sessionTimer.pause()
             isPaused = true
@@ -271,6 +307,7 @@ final class AppState: ObservableObject {
     func stopSession() {
         toneGenerator.stop()
         experimentalGenerator.stop()
+        drumGenerator.stop()
         sessionTimer.stop()
         isPlaying = false
         isPaused = false
@@ -314,6 +351,11 @@ final class AppState: ObservableObject {
             icon = selectedPreset.iconName
             colors = selectedPreset.artworkColors
             label = "\(selectedPreset.frequencyLabel) @ \(Int(carrierFrequency)) Hz carrier"
+        } else if playingTab == .energizer, let pat = selectedEnergizerPattern {
+            name = pat.displayName
+            icon = pat.iconName
+            colors = pat.artworkColors
+            label = "\(Int(pat.bpm)) BPM energizer"
         } else {
             let mode = selectedExperimentalMode
             name = mode.displayName
@@ -348,6 +390,7 @@ final class AppState: ObservableObject {
     func cleanup() {
         toneGenerator.forceStop()
         experimentalGenerator.forceStop()
+        drumGenerator.forceStop()
         sessionTimer.stop()
         nowPlayingService.tearDown()
         timerCancellable?.cancel()
@@ -358,5 +401,6 @@ final class AppState: ObservableObject {
         experimentalModeCancellable?.cancel()
         bowlPatternCancellable?.cancel()
         adhdVariationCancellable?.cancel()
+        energizerPatternCancellable?.cancel()
     }
 }
