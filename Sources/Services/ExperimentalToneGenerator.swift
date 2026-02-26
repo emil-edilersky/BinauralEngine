@@ -368,7 +368,7 @@ final class ExperimentalToneGenerator {
                 // Clamp to prevent rare drift
                 lastOutput = max(-1.0, min(1.0, lastOutput))
 
-                let sample = lastOutput * currentGain * 6.4 // Scale up (leaky integrator output is small)
+                let sample = lastOutput * currentGain * 1.6 // Scale up (leaky integrator output is small)
 
                 writeStereo(ablPointer, frame: frame, sample: sample)
             }
