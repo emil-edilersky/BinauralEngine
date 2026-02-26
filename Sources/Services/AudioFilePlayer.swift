@@ -13,6 +13,7 @@ final class AudioFilePlayer {
 
     private let fadeDuration: Double = 0.5
     private(set) var isPlaying: Bool = false
+    private var isPaused: Bool = false
     private var generation: Int = 0
 
     private var configChangeObserver: NSObjectProtocol?
@@ -124,11 +125,13 @@ final class AudioFilePlayer {
     }
 
     func pause() {
+        isPaused = true
         playerNode?.pause()
         audioEngine?.pause()
     }
 
     func resume() {
+        isPaused = false
         try? audioEngine?.start()
         playerNode?.play()
     }
@@ -141,9 +144,11 @@ final class AudioFilePlayer {
     // MARK: - Device Change
 
     private func handleDeviceChange() {
-        guard isPlaying, let filename = lastFilename else { return }
+        guard isPlaying || isPaused, let filename = lastFilename else { return }
+        let wasPaused = isPaused
         forceStop()
         start(filename: filename)
+        if wasPaused { pause() }
     }
 
     // MARK: - Teardown
@@ -163,6 +168,7 @@ final class AudioFilePlayer {
         audioEngine = nil
         playerNode = nil
         isPlaying = false
+        isPaused = false
     }
 
     // MARK: - Bundle Lookup

@@ -27,6 +27,7 @@ final class ToneGenerator {
     private let fadeDuration: Double = 1.0
 
     private(set) var isPlaying: Bool = false
+    private var isPaused: Bool = false
 
     /// Generation counter to invalidate stale stop() closures
     private var generation: Int = 0
@@ -176,12 +177,14 @@ final class ToneGenerator {
 
     /// Restart the engine when the audio output device changes.
     private func handleDeviceChange() {
-        guard isPlaying || (_targetGainPtr != nil) else { return }
+        guard isPlaying || isPaused || (_targetGainPtr != nil) else { return }
+        let wasPaused = isPaused
         let leftFreq = _leftFreqPtr?.pointee ?? lastLeftFreq
         let rightFreq = _rightFreqPtr?.pointee ?? lastRightFreq
         // Tear down old engine and rebuild with new device's sample rate
         forceStop()
         start(leftFrequency: leftFreq, rightFrequency: rightFreq)
+        if wasPaused { pause() }
     }
 
     /// Pointers for communicating with the audio render thread
@@ -218,11 +221,13 @@ final class ToneGenerator {
 
     /// Pause audio output (keeps engine alive for quick resume)
     func pause() {
+        isPaused = true
         audioEngine?.pause()
     }
 
     /// Resume audio output after pause
     func resume() {
+        isPaused = false
         try? audioEngine?.start()
     }
 
@@ -255,6 +260,7 @@ final class ToneGenerator {
         audioEngine = nil
         sourceNode = nil
         isPlaying = false
+        isPaused = false
 
         _leftFreqPtr?.deallocate()
         _rightFreqPtr?.deallocate()

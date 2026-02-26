@@ -14,6 +14,7 @@ final class ExperimentalToneGenerator {
     private let fadeDuration: Double = 1.0
 
     private(set) var isPlaying: Bool = false
+    private var isPaused: Bool = false
 
     /// Generation counter to invalidate stale stop() closures
     private var generation: Int = 0
@@ -164,10 +165,12 @@ final class ExperimentalToneGenerator {
     }
 
     func pause() {
+        isPaused = true
         audioEngine?.pause()
     }
 
     func resume() {
+        isPaused = false
         try? audioEngine?.start()
     }
 
@@ -185,11 +188,13 @@ final class ExperimentalToneGenerator {
     // MARK: - Device Change
 
     private func handleDeviceChange() {
-        guard isPlaying || (_targetGainPtr != nil), let mode = lastMode else { return }
+        guard isPlaying || isPaused || (_targetGainPtr != nil), let mode = lastMode else { return }
+        let wasPaused = isPaused
         let pattern = lastBowlPattern ?? .relax
         let variation = lastADHDVariation ?? .standard
         forceStop()
         start(mode: mode, bowlPattern: pattern, adhdVariation: variation)
+        if wasPaused { pause() }
     }
 
     // MARK: - Teardown
@@ -208,6 +213,7 @@ final class ExperimentalToneGenerator {
         audioEngine = nil
         sourceNode = nil
         isPlaying = false
+        isPaused = false
 
         _targetGainPtr?.deallocate()
         _isoFreqPtr?.deallocate()
