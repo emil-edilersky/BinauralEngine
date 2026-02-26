@@ -5,6 +5,7 @@ import AppKit
 enum AppTab: String, CaseIterable, Identifiable {
     case binaural
     case experimental
+    case energizer
 
     var id: String { rawValue }
 
@@ -12,6 +13,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         switch self {
         case .binaural:     return "Binaural"
         case .experimental: return "Experimental"
+        case .energizer:    return "Energizer"
         }
     }
 }

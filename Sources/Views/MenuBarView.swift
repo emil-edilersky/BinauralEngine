@@ -35,6 +35,13 @@ struct MenuBarView: View {
                 }
                 .opacity(appState.activeTab == .experimental ? 1 : 0)
                 .allowsHitTesting(appState.activeTab == .experimental)
+
+                VStack(spacing: 0) {
+                    energizerSection
+                    Spacer(minLength: 0)
+                }
+                .opacity(appState.activeTab == .energizer ? 1 : 0)
+                .allowsHitTesting(appState.activeTab == .energizer)
             }
             if showAbout {
                 Divider()
@@ -306,6 +313,52 @@ struct MenuBarView: View {
         }
     }
 
+    // MARK: - Energizer
+
+    private var energizerSection: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(EnergizerPattern.allCases) { pattern in
+                energizerPatternRow(pattern)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func energizerPatternRow(_ pattern: EnergizerPattern) -> some View {
+        let isActive = pattern == appState.selectedEnergizerPattern
+
+        return HStack(spacing: 10) {
+            Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(isActive ? .blue : .secondary)
+                .font(.body)
+
+            Image(systemName: pattern.iconName)
+                .frame(width: 18)
+                .foregroundStyle(isActive ? .primary : .secondary)
+
+            Text(pattern.displayName)
+                .font(.body)
+
+            Spacer()
+
+            Text(pattern.description)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .contentShape(Rectangle())
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(isActive ? Color.blue.opacity(0.08) : Color.clear)
+        .onTapGesture {
+            if appState.selectedEnergizerPattern == pattern {
+                appState.selectedEnergizerPattern = nil
+            } else {
+                appState.selectedEnergizerPattern = pattern
+            }
+        }
+    }
+
     // MARK: - Presets
 
     private var presetsSection: some View {
@@ -459,7 +512,7 @@ struct MenuBarView: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("\u{00A9} 2025 BinauralEngine. Open source.")
+                Text("\u{00A9} 2025 BinauralEngine. Open source. (\(BuildVersion.commitHash))")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -479,18 +532,18 @@ struct MenuBarView: View {
     }
 
     private var currentModeName: String {
-        if appState.activeTab == .binaural {
-            return appState.selectedPreset.displayName
-        } else {
-            return appState.selectedExperimentalMode.displayName
+        switch appState.activeTab {
+        case .binaural:     return appState.selectedPreset.displayName
+        case .experimental: return appState.selectedExperimentalMode.displayName
+        case .energizer:    return appState.selectedEnergizerPattern?.displayName ?? "Energizer"
         }
     }
 
     private var currentModeAbout: String {
-        if appState.activeTab == .binaural {
-            return appState.selectedPreset.aboutDescription
-        } else {
-            return appState.selectedExperimentalMode.aboutDescription
+        switch appState.activeTab {
+        case .binaural:     return appState.selectedPreset.aboutDescription
+        case .experimental: return appState.selectedExperimentalMode.aboutDescription
+        case .energizer:    return appState.selectedEnergizerPattern?.aboutDescription ?? "Short, intense drum-based sessions. Select a pattern to start."
         }
     }
 
