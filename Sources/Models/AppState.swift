@@ -1,3 +1,4 @@
+import AVFAudio
 import Foundation
 import Combine
 import AppKit
@@ -241,6 +242,7 @@ final class AppState: ObservableObject {
         isPlaying = true
         isPaused = false
 
+        beginAudioRouting()
         updateNowPlayingInfo()
     }
 
@@ -282,6 +284,7 @@ final class AppState: ObservableObject {
         isPlaying = true
         isPaused = false
 
+        beginAudioRouting()
         updateNowPlayingInfo()
     }
 
@@ -297,6 +300,7 @@ final class AppState: ObservableObject {
         sessionTimer.start(duration: audioFilePlayer.fileDuration)
         isPlaying = true
         isPaused = false
+        beginAudioRouting()
         updateNowPlayingInfo()
     }
 
@@ -308,6 +312,7 @@ final class AppState: ObservableObject {
 
         if isPaused {
             // Resume
+            beginAudioRouting()
             switch playingTab {
             case .binaural:     toneGenerator.resume()
             case .experimental: experimentalGenerator.resume()
@@ -318,7 +323,7 @@ final class AppState: ObservableObject {
             isPaused = false
             isPlaying = true
         } else {
-            // Pause
+            // Pause — release audio route so AirPods can switch away
             switch playingTab {
             case .binaural:     toneGenerator.pause()
             case .experimental: experimentalGenerator.pause()
@@ -328,6 +333,7 @@ final class AppState: ObservableObject {
             sessionTimer.pause()
             isPaused = true
             isPlaying = false
+            leaveAudioRouting()
         }
 
         updateNowPlayingInfo()
@@ -342,6 +348,7 @@ final class AppState: ObservableObject {
         isPlaying = false
         isPaused = false
         playingTab = nil
+        leaveAudioRouting()
         nowPlayingService.clearNowPlaying()
     }
 
@@ -428,6 +435,22 @@ final class AppState: ObservableObject {
         )
     }
 
+    // MARK: - Audio Routing Arbitration
+
+    /// Tell the system we're actively using audio (AirPods automatic switching).
+    private func beginAudioRouting() {
+        AVAudioRoutingArbiter.shared.begin(category: .playback) { _, error in
+            if let error {
+                print("AVAudioRoutingArbiter begin failed: \(error)")
+            }
+        }
+    }
+
+    /// Tell the system we're done with audio so AirPods can switch away.
+    private func leaveAudioRouting() {
+        AVAudioRoutingArbiter.shared.leave()
+    }
+
     // MARK: - Cleanup
 
     func cleanup() {
@@ -435,6 +458,7 @@ final class AppState: ObservableObject {
         experimentalGenerator.forceStop()
         audioFilePlayer.forceStop()
         sessionTimer.stop()
+        leaveAudioRouting()
         nowPlayingService.tearDown()
         timerCancellable?.cancel()
         carrierCancellable?.cancel()
