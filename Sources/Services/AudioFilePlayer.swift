@@ -16,11 +16,6 @@ final class AudioFilePlayer {
     private var isPaused: Bool = false
     private var generation: Int = 0
 
-    private var configChangeObserver: NSObjectProtocol?
-
-    /// Called when audio device changes interrupt playback.
-    var onInterruption: (() -> Void)?
-
     private var lastFilename: String?
 
     /// Duration of the currently loaded file in seconds (set after start).
@@ -83,17 +78,6 @@ final class AudioFilePlayer {
         self.playerNode = player
         self.lastFilename = filename
         self.isPlaying = true
-
-        // Observe audio device changes
-        configChangeObserver = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange,
-            object: engine,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.handleDeviceChange()
-            }
-        }
     }
 
     // MARK: - Lifecycle
@@ -152,22 +136,9 @@ final class AudioFilePlayer {
         tearDownEngine()
     }
 
-    // MARK: - Device Change
-
-    /// Audio device changed — stop and notify.
-    private func handleDeviceChange() {
-        guard isPlaying else { return }
-        forceStop()
-        onInterruption?()
-    }
-
     // MARK: - Teardown
 
     private func tearDownEngine() {
-        if let observer = configChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
-            configChangeObserver = nil
-        }
         playerNode?.stop()
         if let engine = audioEngine {
             engine.stop()

@@ -19,12 +19,6 @@ final class ExperimentalToneGenerator {
     /// Generation counter to invalidate stale stop() closures
     private var generation: Int = 0
 
-    /// Observer for audio device changes
-    private var configChangeObserver: NSObjectProtocol?
-
-    /// Called when audio device changes interrupt playback.
-    var onInterruption: (() -> Void)?
-
     /// Last mode/pattern/variation for resume after pause
     private var lastMode: ExperimentalMode?
     private var lastBowlPattern: CrystalBowlPattern?
@@ -127,17 +121,6 @@ final class ExperimentalToneGenerator {
             self.lastADHDVariation = adhdVariation
             self._targetGainPtr = targetGainPtr
             self._isoFreqPtr = isoFreqPtr
-
-            configChangeObserver.map { NotificationCenter.default.removeObserver($0) }
-            configChangeObserver = NotificationCenter.default.addObserver(
-                forName: .AVAudioEngineConfigurationChange,
-                object: engine,
-                queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor in
-                    self?.handleDeviceChange()
-                }
-            }
         } catch {
             print("ExperimentalToneGenerator: Failed to start audio engine: \(error)")
             targetGainPtr.deallocate()
@@ -196,22 +179,9 @@ final class ExperimentalToneGenerator {
         _isoFreqPtr?.pointee = freq
     }
 
-    // MARK: - Device Change
-
-    /// Audio device changed — stop and notify.
-    private func handleDeviceChange() {
-        guard isPlaying else { return }
-        forceStop()
-        onInterruption?()
-    }
-
     // MARK: - Teardown
 
     private func tearDownEngine() {
-        if let observer = configChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
-            configChangeObserver = nil
-        }
         if let engine = audioEngine {
             engine.stop()
             if let node = sourceNode, engine.attachedNodes.contains(node) {
