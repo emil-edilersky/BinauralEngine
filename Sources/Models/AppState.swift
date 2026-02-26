@@ -36,7 +36,7 @@ final class AppState: ObservableObject {
     let sessionTimer = SessionTimer()
     private let toneGenerator = ToneGenerator()
     private let experimentalGenerator = ExperimentalToneGenerator()
-    private let drumGenerator = DrumGenerator()
+    private let audioFilePlayer = AudioFilePlayer()
     private let nowPlayingService = NowPlayingService()
 
     private var timerCancellable: AnyCancellable?
@@ -71,12 +71,22 @@ final class AppState: ObservableObject {
         }
         nowPlayingService.onNextTrack = { [weak self] in
             Task { @MainActor [weak self] in
-                self?.switchPreset(forward: true)
+                guard let self else { return }
+                if self.playingTab == .energizer {
+                    self.switchEnergizerPattern(forward: true)
+                } else {
+                    self.switchPreset(forward: true)
+                }
             }
         }
         nowPlayingService.onPreviousTrack = { [weak self] in
             Task { @MainActor [weak self] in
-                self?.switchPreset(forward: false)
+                guard let self else { return }
+                if self.playingTab == .energizer {
+                    self.switchEnergizerPattern(forward: false)
+                } else {
+                    self.switchPreset(forward: false)
+                }
             }
         }
         nowPlayingService.configure()
@@ -189,7 +199,7 @@ final class AppState: ObservableObject {
         if isPlaying || isPaused {
             toneGenerator.forceStop()
             experimentalGenerator.forceStop()
-            drumGenerator.forceStop()
+            audioFilePlayer.forceStop()
             sessionTimer.stop()
         }
 
@@ -201,12 +211,17 @@ final class AppState: ObservableObject {
                 rightFrequency: rightFrequency
             )
         } else if activeTab == .energizer, let pattern = selectedEnergizerPattern {
-            drumGenerator.start(pattern: pattern)
+            audioFilePlayer.start(filename: pattern.mp3Filename)
         } else if activeTab == .experimental {
             experimentalGenerator.start(mode: selectedExperimentalMode, bowlPattern: crystalBowlPattern, adhdVariation: adhdPowerVariation)
         }
 
-        let seconds = (activeTab == .energizer) ? 300 : duration.totalSeconds
+        let seconds: TimeInterval
+        if activeTab == .energizer {
+            seconds = audioFilePlayer.fileDuration
+        } else {
+            seconds = duration.totalSeconds
+        }
         sessionTimer.start(duration: seconds)
 
         isPlaying = true
@@ -231,7 +246,7 @@ final class AppState: ObservableObject {
 
         toneGenerator.forceStop()
         experimentalGenerator.forceStop()
-        drumGenerator.forceStop()
+        audioFilePlayer.forceStop()
         sessionTimer.stop()
 
         playingTab = .experimental
@@ -256,16 +271,16 @@ final class AppState: ObservableObject {
         updateNowPlayingInfo()
     }
 
-    /// Start a 5-minute energizer session with the given drum pattern.
+    /// Start an energizer session — plays the mp3 track at its original duration.
     func startEnergizerSession(pattern: EnergizerPattern) {
         toneGenerator.forceStop()
         experimentalGenerator.forceStop()
-        drumGenerator.forceStop()
+        audioFilePlayer.forceStop()
         sessionTimer.stop()
 
         playingTab = .energizer
-        drumGenerator.start(pattern: pattern)
-        sessionTimer.start(duration: 300) // always 5 min
+        audioFilePlayer.start(filename: pattern.mp3Filename)
+        sessionTimer.start(duration: audioFilePlayer.fileDuration)
         isPlaying = true
         isPaused = false
         updateNowPlayingInfo()
@@ -282,7 +297,7 @@ final class AppState: ObservableObject {
             switch playingTab {
             case .binaural:     toneGenerator.resume()
             case .experimental: experimentalGenerator.resume()
-            case .energizer:    drumGenerator.resume()
+            case .energizer:    audioFilePlayer.resume()
             case nil:           break
             }
             sessionTimer.resume()
@@ -293,7 +308,7 @@ final class AppState: ObservableObject {
             switch playingTab {
             case .binaural:     toneGenerator.pause()
             case .experimental: experimentalGenerator.pause()
-            case .energizer:    drumGenerator.pause()
+            case .energizer:    audioFilePlayer.pause()
             case nil:           break
             }
             sessionTimer.pause()
@@ -308,7 +323,7 @@ final class AppState: ObservableObject {
     func stopSession() {
         toneGenerator.stop()
         experimentalGenerator.stop()
-        drumGenerator.stop()
+        audioFilePlayer.stop()
         sessionTimer.stop()
         isPlaying = false
         isPaused = false
@@ -324,6 +339,19 @@ final class AppState: ObservableObject {
             selectedPreset = all[(all.index(after: idx) == all.endIndex) ? all.startIndex : all.index(after: idx)]
         } else {
             selectedPreset = all[idx == all.startIndex ? all.index(before: all.endIndex) : all.index(before: idx)]
+        }
+    }
+
+    /// Cycle to next/prev energizer pattern. Wraps around.
+    func switchEnergizerPattern(forward: Bool) {
+        guard let current = selectedEnergizerPattern else { return }
+        let all = EnergizerPattern.allCases
+        guard let idx = all.firstIndex(of: current) else { return }
+        if forward {
+            let next = all.index(after: idx)
+            selectedEnergizerPattern = all[next == all.endIndex ? all.startIndex : next]
+        } else {
+            selectedEnergizerPattern = all[idx == all.startIndex ? all.index(before: all.endIndex) : all.index(before: idx)]
         }
     }
 
@@ -356,7 +384,7 @@ final class AppState: ObservableObject {
             name = pat.displayName
             icon = pat.iconName
             colors = pat.artworkColors
-            label = "\(Int(pat.bpm)) BPM energizer"
+            label = "Energizer track"
         } else {
             let mode = selectedExperimentalMode
             name = mode.displayName
@@ -391,7 +419,7 @@ final class AppState: ObservableObject {
     func cleanup() {
         toneGenerator.forceStop()
         experimentalGenerator.forceStop()
-        drumGenerator.forceStop()
+        audioFilePlayer.forceStop()
         sessionTimer.stop()
         nowPlayingService.tearDown()
         timerCancellable?.cancel()
