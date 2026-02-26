@@ -132,8 +132,13 @@ final class AudioFilePlayer {
 
     func resume() {
         isPaused = false
-        try? audioEngine?.start()
-        playerNode?.play()
+        if audioEngine == nil, let filename = lastFilename {
+            // Engine was torn down during pause (device change) — rebuild
+            start(filename: filename)
+        } else {
+            try? audioEngine?.start()
+            playerNode?.play()
+        }
     }
 
     func forceStop() {
@@ -144,11 +149,15 @@ final class AudioFilePlayer {
     // MARK: - Device Change
 
     private func handleDeviceChange() {
-        guard isPlaying || isPaused, let filename = lastFilename else { return }
-        let wasPaused = isPaused
+        if isPaused {
+            // Release audio device entirely — engine rebuilds on resume
+            forceStop()
+            isPaused = true
+            return
+        }
+        guard isPlaying, let filename = lastFilename else { return }
         forceStop()
         start(filename: filename)
-        if wasPaused { pause() }
     }
 
     // MARK: - Teardown

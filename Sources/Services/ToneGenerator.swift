@@ -177,14 +177,18 @@ final class ToneGenerator {
 
     /// Restart the engine when the audio output device changes.
     private func handleDeviceChange() {
-        guard isPlaying || isPaused || (_targetGainPtr != nil) else { return }
-        let wasPaused = isPaused
+        if isPaused {
+            // Release audio device entirely — engine rebuilds on resume
+            forceStop()
+            isPaused = true  // Restore: forceStop clears it
+            return
+        }
+        guard isPlaying || (_targetGainPtr != nil) else { return }
         let leftFreq = _leftFreqPtr?.pointee ?? lastLeftFreq
         let rightFreq = _rightFreqPtr?.pointee ?? lastRightFreq
         // Tear down old engine and rebuild with new device's sample rate
         forceStop()
         start(leftFrequency: leftFreq, rightFrequency: rightFreq)
-        if wasPaused { pause() }
     }
 
     /// Pointers for communicating with the audio render thread
@@ -228,7 +232,12 @@ final class ToneGenerator {
     /// Resume audio output after pause
     func resume() {
         isPaused = false
-        try? audioEngine?.start()
+        if audioEngine == nil {
+            // Engine was torn down during pause (device change) — rebuild
+            start(leftFrequency: lastLeftFreq, rightFrequency: lastRightFreq)
+        } else {
+            try? audioEngine?.start()
+        }
     }
 
     /// Update frequencies live while playing (glitch-free via pointer writes).

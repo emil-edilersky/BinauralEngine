@@ -171,7 +171,12 @@ final class ExperimentalToneGenerator {
 
     func resume() {
         isPaused = false
-        try? audioEngine?.start()
+        if audioEngine == nil, let mode = lastMode {
+            // Engine was torn down during pause (device change) — rebuild
+            start(mode: mode, bowlPattern: lastBowlPattern ?? .relax, adhdVariation: lastADHDVariation ?? .standard)
+        } else {
+            try? audioEngine?.start()
+        }
     }
 
     func forceStop() {
@@ -188,13 +193,17 @@ final class ExperimentalToneGenerator {
     // MARK: - Device Change
 
     private func handleDeviceChange() {
-        guard isPlaying || isPaused || (_targetGainPtr != nil), let mode = lastMode else { return }
-        let wasPaused = isPaused
+        if isPaused {
+            // Release audio device entirely — engine rebuilds on resume
+            forceStop()
+            isPaused = true
+            return
+        }
+        guard isPlaying || (_targetGainPtr != nil), let mode = lastMode else { return }
         let pattern = lastBowlPattern ?? .relax
         let variation = lastADHDVariation ?? .standard
         forceStop()
         start(mode: mode, bowlPattern: pattern, adhdVariation: variation)
-        if wasPaused { pause() }
     }
 
     // MARK: - Teardown
