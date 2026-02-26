@@ -1,6 +1,5 @@
 import AVFoundation
 import Foundation
-
 /// Generates stereo binaural beat tones using AVAudioEngine.
 ///
 /// Produces two pure sine waves — one per ear — at slightly different frequencies.

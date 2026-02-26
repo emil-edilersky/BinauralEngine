@@ -9,7 +9,9 @@ import AppKit
 /// MPRemoteCommandCenter handlers for play/pause from external controls.
 @MainActor
 final class NowPlayingService {
-    var onPlayPause: (() -> Void)?
+    var onPlay: (() -> Void)?
+    var onPause: (() -> Void)?
+    var onTogglePlayPause: (() -> Void)?
     var onNextTrack: (() -> Void)?
     var onPreviousTrack: (() -> Void)?
 
@@ -25,19 +27,19 @@ final class NowPlayingService {
     func configure() {
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] _ in
-            self?.onPlayPause?()
+            self?.onPlay?()
             return .success
         }
 
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { [weak self] _ in
-            self?.onPlayPause?()
+            self?.onPause?()
             return .success
         }
 
         commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-            self?.onPlayPause?()
+            self?.onTogglePlayPause?()
             return .success
         }
 

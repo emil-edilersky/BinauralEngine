@@ -1,6 +1,5 @@
 import AVFoundation
 import Foundation
-
 /// Generates experimental tones (isochronal, noise, crystal bowl, heart coherence).
 ///
 /// Mirrors ToneGenerator architecture: AVAudioEngine + AVAudioSourceNode render callback

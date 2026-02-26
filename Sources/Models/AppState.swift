@@ -73,8 +73,22 @@ final class AppState: ObservableObject {
                 self?.objectWillChange.send()
             }
 
-        // Wire up Now Playing play/pause to our toggle
-        nowPlayingService.onPlayPause = { [weak self] in
+        // Wire up Now Playing remote commands — separate play/pause to avoid
+        // bounce: system sends repeated pauseCommands during AirPods switching,
+        // and togglePlayPause() would interpret the second one as "resume".
+        nowPlayingService.onPlay = { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.isPaused else { return }
+                self.togglePlayPause()
+            }
+        }
+        nowPlayingService.onPause = { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.isPlaying else { return }
+                self.togglePlayPause()
+            }
+        }
+        nowPlayingService.onTogglePlayPause = { [weak self] in
             Task { @MainActor [weak self] in
                 self?.togglePlayPause()
             }
@@ -439,11 +453,7 @@ final class AppState: ObservableObject {
 
     /// Tell the system we're actively using audio (AirPods automatic switching).
     private func beginAudioRouting() {
-        AVAudioRoutingArbiter.shared.begin(category: .playback) { _, error in
-            if let error {
-                print("AVAudioRoutingArbiter begin failed: \(error)")
-            }
-        }
+        AVAudioRoutingArbiter.shared.begin(category: .playback) { _, _ in }
     }
 
     /// Tell the system we're done with audio so AirPods can switch away.

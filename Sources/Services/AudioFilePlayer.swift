@@ -1,6 +1,5 @@
 import AVFoundation
 import Foundation
-
 /// Plays mp3 audio files from the app bundle for Energizer sessions.
 ///
 /// AVAudioEngine with fade in/out, device change handling, and
