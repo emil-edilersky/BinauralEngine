@@ -63,6 +63,16 @@ final class AppState: ObservableObject {
                 self?.objectWillChange.send()
             }
 
+        // Stop session when audio device changes (headphones switch to iPhone, etc.)
+        let stopOnInterruption: () -> Void = { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.stopSession()
+            }
+        }
+        toneGenerator.onInterruption = stopOnInterruption
+        experimentalGenerator.onInterruption = stopOnInterruption
+        audioFilePlayer.onInterruption = stopOnInterruption
+
         // Wire up Now Playing play/pause to our toggle
         nowPlayingService.onPlayPause = { [weak self] in
             Task { @MainActor [weak self] in

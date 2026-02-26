@@ -17,6 +17,10 @@ final class AudioFilePlayer {
     private var generation: Int = 0
 
     private var configChangeObserver: NSObjectProtocol?
+
+    /// Called when audio device changes interrupt playback.
+    var onInterruption: (() -> Void)?
+
     private var lastFilename: String?
 
     /// Duration of the currently loaded file in seconds (set after start).
@@ -150,11 +154,11 @@ final class AudioFilePlayer {
 
     // MARK: - Device Change
 
-    /// Only fires while playing — paused state has no engine/observer.
+    /// Audio device changed — stop and notify.
     private func handleDeviceChange() {
-        guard isPlaying, let filename = lastFilename else { return }
+        guard isPlaying else { return }
         forceStop()
-        start(filename: filename)
+        onInterruption?()
     }
 
     // MARK: - Teardown

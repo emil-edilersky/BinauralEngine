@@ -22,7 +22,10 @@ final class ExperimentalToneGenerator {
     /// Observer for audio device changes
     private var configChangeObserver: NSObjectProtocol?
 
-    /// Last mode/pattern/variation for restart after device change
+    /// Called when audio device changes interrupt playback.
+    var onInterruption: (() -> Void)?
+
+    /// Last mode/pattern/variation for resume after pause
     private var lastMode: ExperimentalMode?
     private var lastBowlPattern: CrystalBowlPattern?
     private var lastADHDVariation: ADHDPowerVariation?
@@ -195,13 +198,11 @@ final class ExperimentalToneGenerator {
 
     // MARK: - Device Change
 
-    /// Only fires while playing — paused state has no engine/observer.
+    /// Audio device changed — stop and notify.
     private func handleDeviceChange() {
-        guard isPlaying || (_targetGainPtr != nil), let mode = lastMode else { return }
-        let pattern = lastBowlPattern ?? .relax
-        let variation = lastADHDVariation ?? .standard
+        guard isPlaying else { return }
         forceStop()
-        start(mode: mode, bowlPattern: pattern, adhdVariation: variation)
+        onInterruption?()
     }
 
     // MARK: - Teardown

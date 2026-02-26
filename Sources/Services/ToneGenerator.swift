@@ -35,7 +35,10 @@ final class ToneGenerator {
     /// Observer for audio device changes
     private var configChangeObserver: NSObjectProtocol?
 
-    /// Last known frequencies for restart after device change
+    /// Called when audio device changes interrupt playback (e.g. headphones switch to iPhone).
+    var onInterruption: (() -> Void)?
+
+    /// Last known frequencies for resume after pause
     private var lastLeftFreq: Double = 0
     private var lastRightFreq: Double = 0
 
@@ -175,14 +178,11 @@ final class ToneGenerator {
         }
     }
 
-    /// Restart the engine when the audio output device changes.
-    /// (Only fires while playing — paused state has no engine/observer.)
+    /// Audio device changed (headphones switched, etc.) — stop and notify.
     private func handleDeviceChange() {
-        guard isPlaying || (_targetGainPtr != nil) else { return }
-        let leftFreq = _leftFreqPtr?.pointee ?? lastLeftFreq
-        let rightFreq = _rightFreqPtr?.pointee ?? lastRightFreq
+        guard isPlaying else { return }
         forceStop()
-        start(leftFrequency: leftFreq, rightFrequency: rightFreq)
+        onInterruption?()
     }
 
     /// Pointers for communicating with the audio render thread
