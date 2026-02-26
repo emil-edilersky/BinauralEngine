@@ -176,17 +176,11 @@ final class ToneGenerator {
     }
 
     /// Restart the engine when the audio output device changes.
+    /// (Only fires while playing — paused state has no engine/observer.)
     private func handleDeviceChange() {
-        if isPaused {
-            // Release audio device entirely — engine rebuilds on resume
-            forceStop()
-            isPaused = true  // Restore: forceStop clears it
-            return
-        }
         guard isPlaying || (_targetGainPtr != nil) else { return }
         let leftFreq = _leftFreqPtr?.pointee ?? lastLeftFreq
         let rightFreq = _rightFreqPtr?.pointee ?? lastRightFreq
-        // Tear down old engine and rebuild with new device's sample rate
         forceStop()
         start(leftFrequency: leftFreq, rightFrequency: rightFreq)
     }
@@ -223,10 +217,14 @@ final class ToneGenerator {
         }
     }
 
-    /// Pause audio output (keeps engine alive for quick resume)
+    /// Pause audio — fully tears down engine to release the audio device.
+    /// Resume rebuilds from cached frequencies.
     func pause() {
+        lastLeftFreq = _leftFreqPtr?.pointee ?? lastLeftFreq
+        lastRightFreq = _rightFreqPtr?.pointee ?? lastRightFreq
+        generation += 1
+        tearDownEngine()
         isPaused = true
-        audioEngine?.pause()
     }
 
     /// Resume audio output after pause

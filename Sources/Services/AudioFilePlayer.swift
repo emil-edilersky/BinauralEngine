@@ -124,10 +124,12 @@ final class AudioFilePlayer {
         }
     }
 
+    /// Pause audio — fully tears down engine to release the audio device.
+    /// Resume rebuilds from cached filename.
     func pause() {
+        generation += 1
+        tearDownEngine()
         isPaused = true
-        playerNode?.pause()
-        audioEngine?.pause()
     }
 
     func resume() {
@@ -148,13 +150,8 @@ final class AudioFilePlayer {
 
     // MARK: - Device Change
 
+    /// Only fires while playing — paused state has no engine/observer.
     private func handleDeviceChange() {
-        if isPaused {
-            // Release audio device entirely — engine rebuilds on resume
-            forceStop()
-            isPaused = true
-            return
-        }
         guard isPlaying, let filename = lastFilename else { return }
         forceStop()
         start(filename: filename)

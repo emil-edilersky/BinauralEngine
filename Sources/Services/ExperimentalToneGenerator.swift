@@ -164,9 +164,12 @@ final class ExperimentalToneGenerator {
         }
     }
 
+    /// Pause audio — fully tears down engine to release the audio device.
+    /// Resume rebuilds from cached mode/pattern.
     func pause() {
+        generation += 1
+        tearDownEngine()
         isPaused = true
-        audioEngine?.pause()
     }
 
     func resume() {
@@ -192,13 +195,8 @@ final class ExperimentalToneGenerator {
 
     // MARK: - Device Change
 
+    /// Only fires while playing — paused state has no engine/observer.
     private func handleDeviceChange() {
-        if isPaused {
-            // Release audio device entirely — engine rebuilds on resume
-            forceStop()
-            isPaused = true
-            return
-        }
         guard isPlaying || (_targetGainPtr != nil), let mode = lastMode else { return }
         let pattern = lastBowlPattern ?? .relax
         let variation = lastADHDVariation ?? .standard
