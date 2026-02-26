@@ -32,6 +32,11 @@ final class ToneGenerator {
     /// Generation counter to invalidate stale stop() closures
     private var generation: Int = 0
 
+    private var configChangeObserver: NSObjectProtocol?
+
+    /// Called when audio route changes cause the session to stop.
+    var onInterruption: (() -> Void)?
+
     /// Last known frequencies for resume after pause
     private var lastLeftFreq: Double = 0
     private var lastRightFreq: Double = 0
@@ -53,6 +58,7 @@ final class ToneGenerator {
         rightPhase = 0.0
 
         let engine = AVAudioEngine()
+        engine.isAutoShutdownEnabled = true
         let mainMixer = engine.mainMixerNode
         let outputFormat = mainMixer.outputFormat(forBus: 0)
         let sampleRate = outputFormat.sampleRate
@@ -152,6 +158,20 @@ final class ToneGenerator {
             self._leftFreqPtr = leftFreqPtr
             self._rightFreqPtr = rightFreqPtr
             self._targetGainPtr = targetGainPtr
+
+            // When audio route changes (headphones disconnect, etc.) and the
+            // engine stops running, stop the session instead of fighting for the device.
+            configChangeObserver = NotificationCenter.default.addObserver(
+                forName: .AVAudioEngineConfigurationChange,
+                object: engine,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self, self.isPlaying, !(self.audioEngine?.isRunning ?? false) else { return }
+                    self.forceStop()
+                    self.onInterruption?()
+                }
+            }
         } catch {
             print("ToneGenerator: Failed to start audio engine: \(error)")
             leftFreqPtr.deallocate()
@@ -229,6 +249,10 @@ final class ToneGenerator {
 
     /// Shared teardown — stops engine, detaches node, deallocates pointers.
     private func tearDownEngine() {
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configChangeObserver = nil
+        }
         if let engine = audioEngine {
             engine.stop()
             if let node = sourceNode, engine.attachedNodes.contains(node) {

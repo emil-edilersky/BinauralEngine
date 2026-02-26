@@ -56,6 +56,15 @@ final class AppState: ObservableObject {
     // MARK: - Initialization
 
     func initialize() {
+        // When a generator's audio route is yanked away (device disconnect),
+        // stop the whole session so the audio device is released cleanly.
+        let stopOnInterruption: @MainActor () -> Void = { [weak self] in
+            self?.stopSession()
+        }
+        toneGenerator.onInterruption = stopOnInterruption
+        experimentalGenerator.onInterruption = stopOnInterruption
+        audioFilePlayer.onInterruption = stopOnInterruption
+
         // Forward SessionTimer changes so SwiftUI redraws when timer ticks
         timerForwardCancellable = sessionTimer.objectWillChange
             .receive(on: RunLoop.main)

@@ -19,6 +19,11 @@ final class ExperimentalToneGenerator {
     /// Generation counter to invalidate stale stop() closures
     private var generation: Int = 0
 
+    private var configChangeObserver: NSObjectProtocol?
+
+    /// Called when audio route changes cause the session to stop.
+    var onInterruption: (() -> Void)?
+
     /// Last mode/pattern/variation for resume after pause
     private var lastMode: ExperimentalMode?
     private var lastBowlPattern: CrystalBowlPattern?
@@ -36,6 +41,7 @@ final class ExperimentalToneGenerator {
         stop()
 
         let engine = AVAudioEngine()
+        engine.isAutoShutdownEnabled = true
         let mainMixer = engine.mainMixerNode
         let outputFormat = mainMixer.outputFormat(forBus: 0)
         let sampleRate = outputFormat.sampleRate
@@ -121,6 +127,18 @@ final class ExperimentalToneGenerator {
             self.lastADHDVariation = adhdVariation
             self._targetGainPtr = targetGainPtr
             self._isoFreqPtr = isoFreqPtr
+
+            configChangeObserver = NotificationCenter.default.addObserver(
+                forName: .AVAudioEngineConfigurationChange,
+                object: engine,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self, self.isPlaying, !(self.audioEngine?.isRunning ?? false) else { return }
+                    self.forceStop()
+                    self.onInterruption?()
+                }
+            }
         } catch {
             print("ExperimentalToneGenerator: Failed to start audio engine: \(error)")
             targetGainPtr.deallocate()
@@ -182,6 +200,10 @@ final class ExperimentalToneGenerator {
     // MARK: - Teardown
 
     private func tearDownEngine() {
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configChangeObserver = nil
+        }
         if let engine = audioEngine {
             engine.stop()
             if let node = sourceNode, engine.attachedNodes.contains(node) {

@@ -21,6 +21,11 @@ final class AudioFilePlayer {
     /// Duration of the currently loaded file in seconds (set after start).
     private(set) var fileDuration: TimeInterval = 0
 
+    private var configChangeObserver: NSObjectProtocol?
+
+    /// Called when audio route changes cause the session to stop.
+    var onInterruption: (() -> Void)?
+
     // MARK: - Start
 
     func start(filename: String) {
@@ -44,6 +49,7 @@ final class AudioFilePlayer {
         fileDuration = Double(audioFile.length) / format.sampleRate
 
         let engine = AVAudioEngine()
+        engine.isAutoShutdownEnabled = true
         let player = AVAudioPlayerNode()
         let mainMixer = engine.mainMixerNode
 
@@ -78,6 +84,20 @@ final class AudioFilePlayer {
         self.playerNode = player
         self.lastFilename = filename
         self.isPlaying = true
+
+        // When audio route changes (headphones disconnect, etc.) and the
+        // engine stops running, stop the session instead of fighting for the device.
+        configChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.isPlaying, !(self.audioEngine?.isRunning ?? false) else { return }
+                self.forceStop()
+                self.onInterruption?()
+            }
+        }
     }
 
     // MARK: - Lifecycle
@@ -139,6 +159,10 @@ final class AudioFilePlayer {
     // MARK: - Teardown
 
     private func tearDownEngine() {
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configChangeObserver = nil
+        }
         playerNode?.stop()
         if let engine = audioEngine {
             engine.stop()
