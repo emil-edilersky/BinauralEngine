@@ -128,8 +128,12 @@ final class AppState: ObservableObject {
                     )
                     self.updateNowPlayingInfo()
                 } else {
-                    // Idle or experimental playing — start binaural session
-                    self.startSession(duration: .thirty)
+                    // Idle or non-binaural playing — start binaural session.
+                    // Deferred: @Published emits on willSet so self.selectedPreset
+                    // still has the OLD value; startSession reads it via computed properties.
+                    DispatchQueue.main.async { [weak self] in
+                        self?.startSession(duration: .thirty)
+                    }
                 }
             }
 
@@ -143,16 +147,17 @@ final class AppState: ObservableObject {
                 self.experimentalGenerator.updateIsochronalFrequency(newFreq)
             }
 
-        // When experimental mode changes: if playing, restart; if idle, auto-start
+        // When experimental mode changes: if playing, restart; if idle, auto-start.
+        // Pass newMode explicitly — @Published emits on willSet so
+        // self.selectedExperimentalMode still has the OLD value in this sink.
         experimentalModeCancellable = $selectedExperimentalMode
             .dropFirst()
             .sink { [weak self] newMode in
                 guard let self, self.activeTab == .experimental else { return }
-                if self.hasActiveSession {
-                    self.startExperimentalSession(duration: nil, mode: newMode)
-                } else {
-                    self.startSession(duration: .thirty)
-                }
+                self.startExperimentalSession(
+                    duration: self.hasActiveSession ? nil : .thirty,
+                    mode: newMode
+                )
             }
 
         // When crystal bowl pattern changes while playing crystal bowl, restart with new pattern
