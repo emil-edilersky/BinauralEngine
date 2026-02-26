@@ -512,7 +512,7 @@ struct MenuBarView: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("\u{00A9} 2025 BinauralEngine. Open source.")
+                Text("\u{00A9} 2025 BinauralEngine. Open source. (\(BuildVersion.commitHash))")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
