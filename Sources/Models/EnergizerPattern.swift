@@ -45,7 +45,7 @@ enum EnergizerPattern: String, CaseIterable, Identifiable {
     var description: String {
         switch self {
         case .timeToJazz:      return "Jazz energy boost"
-        case .gardenRoots:     return "Organic groove"
+        case .gardenRoots:     return "Bağçalarda kestane"
         case .eternalReturnal: return "Hypnotic loop"
         case .saryKhalil:      return "Eastern rhythms"
         case .qalabalik:       return "Chaotic energy"
@@ -57,7 +57,7 @@ enum EnergizerPattern: String, CaseIterable, Identifiable {
         case .timeToJazz:
             return "High-energy jazz fusion clip — improvisational fire to get you moving."
         case .gardenRoots:
-            return "Organic, earthy grooves rooted in world music traditions."
+            return "Bağçalarda kestane — Turkish folk energy."
         case .eternalReturnal:
             return "A hypnotic audio loop that builds and cycles, pulling you into deep focus."
         case .saryKhalil:
